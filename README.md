@@ -414,10 +414,6 @@ Enter your choice:
 
 ---
 
-# 📸 Screenshots
-
-Add your project screenshots inside the `screenshots` folder.
-
 ### 🏠 Main Menu
 
 ![Main Menu](screenshots/dashboard.png)
@@ -435,6 +431,14 @@ Add your project screenshots inside the `screenshots` folder.
 ![Heatmap](screenshots/heatmap.png)
 
 > 💡 Replace the image files with your actual screenshots after uploading them to GitHub.
+
+---
+
+## 🎬 Project Demonstration
+  <a href="">
+    <img src="https://img.shields.io/badge/🎬%20Project%20Video-success?style=for-the-badge">
+  </a>
+</p>
 
 ---
 
