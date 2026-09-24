@@ -1,3 +1,4 @@
+import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -354,78 +355,39 @@ print("======================================")
 print("       RETAIL SALES DATA ANALYZER")
 print("======================================")
 
-file_path = input(
-    "Enter CSV file path: "
-)
+file_path = "retail_sales_dataset.csv"
 
-# Check file
-if not os.path.exists(file_path):
+if os.path.exists(file_path):
 
-    print("File does not exist.")
+    if analyzer.load_data(file_path):
+        st.success("CSV file loaded successfully!")
 
 else:
 
-    if analyzer.load_data(file_path):
+    st.error("CSV file not found.")
 
-        while True:
+st.header("Retail Sales Data Analyzer")
 
-            print("\n================================")
-            print("           MAIN MENU")
-            print("================================")
+if analyzer.df is not None:
 
-            print("1. Calculate Metrics")
-            print("2. Filter Data")
-            print("3. Display Summary")
-            print("4. Bar Chart")
-            print("5. Line Graph")
-            print("6. Heatmap")
-            print("7. NumPy Analysis")
-            print("8. Exit")
+    st.success("CSV file loaded successfully!")
 
-            choice = input(
-                "\nEnter your choice: "
-            )
+    option = st.selectbox(
+        "Select Analysis",
+        [
+            "Show Data",
+            "Basic Information",
+            "Statistical Summary"
+        ]
+    )
 
-            if choice == "1":
+    if option == "Show Data":
+        st.dataframe(analyzer.df)
 
-                analyzer.calculate_metrics()
+    elif option == "Basic Information":
+        st.write("Rows:", analyzer.df.shape[0])
+        st.write("Columns:", analyzer.df.shape[1])
+        st.write("Column Names:", list(analyzer.df.columns))
 
-            elif choice == "2":
-
-                analyzer.filter_data()
-
-            elif choice == "3":
-
-                analyzer.display_summary()
-
-            elif choice == "4":
-
-                analyzer.bar_chart()
-
-            elif choice == "5":
-
-                analyzer.line_graph()
-
-            elif choice == "6":
-
-                analyzer.heatmap()
-
-            elif choice == "7":
-
-                analyzer.numpy_analysis()
-
-            elif choice == "8":
-
-                print(
-                    "\nThank you for using "
-                    "Retail Sales Data Analyzer!"
-                )
-
-                break
-
-            else:
-
-                print(
-                    "Invalid choice. "
-                    "Please enter 1 to 8."
-                )
+    elif option == "Statistical Summary":
+        st.dataframe(analyzer.df.describe())
