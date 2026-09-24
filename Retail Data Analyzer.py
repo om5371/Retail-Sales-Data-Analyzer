@@ -54,11 +54,23 @@ class RetailAnalyzer:
                 errors="coerce"
             )
 
-            # Check missing values
-            if self.df.isnull().sum().sum() > 0:
-                print("\nMissing values found.")
-                self.df = self.df.dropna()
+            # BUG FIX #3: only drop rows where the columns we actually
+            # need for calculations are missing, not ANY column at all.
+            key_columns = ["Date", "Price", "Quantity Sold", "Total Sales"]
+
+            if self.df[key_columns].isnull().sum().sum() > 0:
+                print("\nMissing values found in key columns.")
+                self.df = self.df.dropna(subset=key_columns)
                 print("Missing rows removed.")
+
+            # BUG FIX #2: sort by date so growth/line-graph calculations
+            # are chronological instead of whatever order the CSV happened
+            # to be in.
+            self.df = self.df.sort_values("Date").reset_index(drop=True)
+
+            if len(self.df) == 0:
+                print("\nNo valid rows left after cleaning the data.")
+                return False
 
             print("\nDataset loaded successfully!")
             print("Total Records:", len(self.df))
@@ -76,7 +88,7 @@ class RetailAnalyzer:
     # ================= CALCULATE METRICS =================
     def calculate_metrics(self):
 
-        if self.df is None:
+        if self.df is None or len(self.df) == 0:
             print("Please load dataset first.")
             return
 
@@ -124,7 +136,7 @@ class RetailAnalyzer:
             category = input("Enter category: ")
 
             result = self.df[
-                self.df["Category"].str.lower()
+                self.df["Category"].astype(str).str.lower()
                 == category.lower()
             ]
 
@@ -154,7 +166,7 @@ class RetailAnalyzer:
                     print("\nFiltered Data:")
                     print(result.to_string(index=False))
 
-            except:
+            except Exception:
                 print("Invalid date format.")
 
         else:
@@ -313,17 +325,23 @@ class RetailAnalyzer:
         )
 
         # Growth percentage
+        # BUG FIX #1 + #2: self.df is already sorted by Date (done in
+        # load_data), so sales[0] is the earliest sale and sales[-1] is
+        # the latest. Also guard against dividing by zero.
         if len(sales) > 1:
 
-            growth = (
-                (sales[-1] - sales[0])
-                / sales[0]
-            ) * 100
+            if sales[0] == 0:
+                print("Growth Percentage: N/A (first sale value is 0)")
+            else:
+                growth = (
+                    (sales[-1] - sales[0])
+                    / sales[0]
+                ) * 100
 
-            print(
-                "Growth Percentage:",
-                round(growth, 2), "%"
-            )
+                print(
+                    "Growth Percentage:",
+                    round(growth, 2), "%"
+                )
 
 
 # ==================================================
