@@ -5,19 +5,22 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import os
 
+st.set_page_config(
+    page_title="Retail Sales Analyzer",
+    page_icon="🛒",
+    layout="wide"
+)
+
 
 class RetailAnalyzer:
 
     def __init__(self):
         self.df = None
 
-    # ================= LOAD DATA =================
-    def load_data(self, file_path):
-
+    def load_data(self, file):
         try:
-            self.df = pd.read_csv(file_path)
+            self.df = pd.read_csv(file)
 
-            # Required columns
             required_columns = [
                 "Date",
                 "Product",
@@ -27,19 +30,15 @@ class RetailAnalyzer:
                 "Total Sales"
             ]
 
-            # Check columns
             for column in required_columns:
                 if column not in self.df.columns:
-                    print("Missing column:", column)
-                    return False
+                    return False, f"Missing column: {column}"
 
-            # Convert date
             self.df["Date"] = pd.to_datetime(
                 self.df["Date"],
                 errors="coerce"
             )
 
-            # Convert numeric columns
             self.df["Price"] = pd.to_numeric(
                 self.df["Price"],
                 errors="coerce"
@@ -55,47 +54,33 @@ class RetailAnalyzer:
                 errors="coerce"
             )
 
-            # BUG FIX #3: only drop rows where the columns we actually
-            # need for calculations are missing, not ANY column at all.
-            key_columns = ["Date", "Price", "Quantity Sold", "Total Sales"]
+            key_columns = [
+                "Date",
+                "Price",
+                "Quantity Sold",
+                "Total Sales"
+            ]
 
-            if self.df[key_columns].isnull().sum().sum() > 0:
-                print("\nMissing values found in key columns.")
-                self.df = self.df.dropna(subset=key_columns)
-                print("Missing rows removed.")
+            self.df = self.df.dropna(
+                subset=key_columns
+            )
 
-            # BUG FIX #2: sort by date so growth/line-graph calculations
-            # are chronological instead of whatever order the CSV happened
-            # to be in.
-            self.df = self.df.sort_values("Date").reset_index(drop=True)
+            self.df = self.df.sort_values(
+                "Date"
+            ).reset_index(drop=True)
 
             if len(self.df) == 0:
-                print("\nNo valid rows left after cleaning the data.")
-                return False
+                return False, "No valid data found."
 
-            print("\nDataset loaded successfully!")
-            print("Total Records:", len(self.df))
-
-            return True
-
-        except FileNotFoundError:
-            print("File not found!")
-            return False
+            return True, "Dataset loaded successfully!"
 
         except Exception as e:
-            print("Error:", e)
-            return False
+            return False, str(e)
 
-    # ================= CALCULATE METRICS =================
-    def calculate_metrics(self):
-
-        if self.df is None or len(self.df) == 0:
-            print("Please load dataset first.")
-            return
-
+    def metrics(self):
         total_sales = self.df["Total Sales"].sum()
-
         average_sales = self.df["Total Sales"].mean()
+        total_quantity = self.df["Quantity Sold"].sum()
 
         popular_product = (
             self.df.groupby("Product")["Quantity Sold"]
@@ -103,291 +88,472 @@ class RetailAnalyzer:
             .idxmax()
         )
 
-        total_quantity = self.df["Quantity Sold"].sum()
-
-        # NumPy calculation
-        sales_array = np.array(self.df["Total Sales"])
-
-        numpy_average = np.mean(sales_array)
-
-        print("\n========== SALES METRICS ==========")
-        print("Total Sales       :", round(total_sales, 2))
-        print("Average Sales     :", round(average_sales, 2))
-        print("Total Quantity    :", total_quantity)
-        print("Popular Product   :", popular_product)
-        print("NumPy Average     :", round(numpy_average, 2))
-
-    # ================= FILTER DATA =================
-    def filter_data(self):
-
-        if self.df is None:
-            print("Please load dataset first.")
-            return
-
-        print("\n1. Filter by Category")
-        print("2. Filter by Date")
-
-        choice = input("Enter choice: ")
-
-        if choice == "1":
-
-            print("\nAvailable Categories:")
-            print(self.df["Category"].unique())
-
-            category = input("Enter category: ")
-
-            result = self.df[
-                self.df["Category"].astype(str).str.lower()
-                == category.lower()
-            ]
-
-            if len(result) == 0:
-                print("No data found.")
-            else:
-                print("\nFiltered Data:")
-                print(result.to_string(index=False))
-
-        elif choice == "2":
-
-            start = input("Enter start date (YYYY-MM-DD): ")
-            end = input("Enter end date (YYYY-MM-DD): ")
-
-            try:
-                start = pd.to_datetime(start)
-                end = pd.to_datetime(end)
-
-                result = self.df[
-                    (self.df["Date"] >= start)
-                    & (self.df["Date"] <= end)
-                ]
-
-                if len(result) == 0:
-                    print("No data found.")
-                else:
-                    print("\nFiltered Data:")
-                    print(result.to_string(index=False))
-
-            except Exception:
-                print("Invalid date format.")
-
-        else:
-            print("Invalid choice.")
-
-    # ================= SUMMARY =================
-    def display_summary(self):
-
-        if self.df is None:
-            print("Please load dataset first.")
-            return
-
-        print("\n========== DATA SUMMARY ==========")
-
-        print("Number of Records:", len(self.df))
-
-        print(
-            "Total Sales:",
-            round(self.df["Total Sales"].sum(), 2)
+        return (
+            total_sales,
+            average_sales,
+            total_quantity,
+            popular_product
         )
 
-        print(
-            "Average Sales:",
-            round(self.df["Total Sales"].mean(), 2)
-        )
 
-        print(
-            "Maximum Sale:",
-            round(self.df["Total Sales"].max(), 2)
-        )
+# =========================
+# HEADER
+# =========================
 
-        print(
-            "Minimum Sale:",
-            round(self.df["Total Sales"].min(), 2)
-        )
+st.title("🛒 Retail Sales Data Analyzer")
+st.write(
+    "Analyze retail sales data using Pandas, NumPy, "
+    "Matplotlib, Seaborn and Streamlit."
+)
 
-        print("\nCategory Wise Sales:")
-
-        category_sales = (
-            self.df.groupby("Category")["Total Sales"]
-            .sum()
-        )
-
-        print(category_sales)
-
-    # ================= BAR CHART =================
-    def bar_chart(self):
-
-        if self.df is None:
-            print("Please load dataset first.")
-            return
-
-        data = (
-            self.df.groupby("Category")["Total Sales"]
-            .sum()
-        )
-
-        plt.figure(figsize=(8, 5))
-
-        data.plot(kind="bar")
-
-        plt.title("Total Sales by Category")
-        plt.xlabel("Category")
-        plt.ylabel("Total Sales")
-
-        plt.tight_layout()
-        plt.show()
-
-    # ================= LINE GRAPH =================
-    def line_graph(self):
-
-        if self.df is None:
-            print("Please load dataset first.")
-            return
-
-        data = (
-            self.df.groupby("Date")["Total Sales"]
-            .sum()
-        )
-
-        plt.figure(figsize=(10, 5))
-
-        plt.plot(
-            data.index,
-            data.values,
-            marker="o"
-        )
-
-        plt.title("Sales Trend Over Time")
-        plt.xlabel("Date")
-        plt.ylabel("Total Sales")
-
-        plt.xticks(rotation=45)
-
-        plt.tight_layout()
-        plt.show()
-
-    # ================= HEATMAP =================
-    def heatmap(self):
-
-        if self.df is None:
-            print("Please load dataset first.")
-            return
-
-        # Select numerical columns
-        data = self.df[
-            ["Price", "Quantity Sold", "Total Sales"]
-        ]
-
-        correlation = data.corr()
-
-        plt.figure(figsize=(7, 5))
-
-        sns.heatmap(
-            correlation,
-            annot=True,
-            cmap="coolwarm"
-        )
-
-        plt.title("Sales Data Correlation")
-
-        plt.tight_layout()
-        plt.show()
-
-    # ================= NUMPY ANALYSIS =================
-    def numpy_analysis(self):
-
-        if self.df is None:
-            print("Please load dataset first.")
-            return
-
-        sales = np.array(
-            self.df["Total Sales"]
-        )
-
-        print("\n========== NUMPY ANALYSIS ==========")
-
-        print(
-            "Total Sales:",
-            np.sum(sales)
-        )
-
-        print(
-            "Average Sales:",
-            np.mean(sales)
-        )
-
-        print(
-            "Highest Sale:",
-            np.max(sales)
-        )
-
-        print(
-            "Lowest Sale:",
-            np.min(sales)
-        )
-
-        # Growth percentage
-        # BUG FIX #1 + #2: self.df is already sorted by Date (done in
-        # load_data), so sales[0] is the earliest sale and sales[-1] is
-        # the latest. Also guard against dividing by zero.
-        if len(sales) > 1:
-
-            if sales[0] == 0:
-                print("Growth Percentage: N/A (first sale value is 0)")
-            else:
-                growth = (
-                    (sales[-1] - sales[0])
-                    / sales[0]
-                ) * 100
-
-                print(
-                    "Growth Percentage:",
-                    round(growth, 2), "%"
-                )
+st.divider()
 
 
-# ==================================================
-# MAIN PROGRAM
-# ==================================================
+# =========================
+# LOAD DATA
+# =========================
 
 analyzer = RetailAnalyzer()
 
-print("======================================")
-print("       RETAIL SALES DATA ANALYZER")
-print("======================================")
+uploaded_file = st.sidebar.file_uploader(
+    "Upload Retail CSV File",
+    type=["csv"]
+)
 
-file_path = "retail_sales_dataset.csv"
+if uploaded_file is not None:
 
-if os.path.exists(file_path):
-
-    if analyzer.load_data(file_path):
-        st.success("CSV file loaded successfully!")
-
-else:
-
-    st.error("CSV file not found.")
-
-st.header("Retail Sales Data Analyzer")
-
-if analyzer.df is not None:
-
-    st.success("CSV file loaded successfully!")
-
-    option = st.selectbox(
-        "Select Analysis",
-        [
-            "Show Data",
-            "Basic Information",
-            "Statistical Summary"
-        ]
+    success, message = analyzer.load_data(
+        uploaded_file
     )
 
-    if option == "Show Data":
-        st.dataframe(analyzer.df)
+elif os.path.exists("retail_sales_dataset.csv"):
 
-    elif option == "Basic Information":
-        st.write("Rows:", analyzer.df.shape[0])
-        st.write("Columns:", analyzer.df.shape[1])
-        st.write("Column Names:", list(analyzer.df.columns))
+    success, message = analyzer.load_data(
+        "retail_sales_dataset.csv"
+    )
 
-    elif option == "Statistical Summary":
-        st.dataframe(analyzer.df.describe())
+else:
+    success = False
+    message = "Please upload a CSV file."
+
+
+if not success:
+
+    st.warning(message)
+
+    st.info(
+        "CSV file must contain: Date, Product, "
+        "Category, Price, Quantity Sold, Total Sales"
+    )
+
+    st.stop()
+
+
+st.sidebar.success("Dataset Loaded")
+
+
+# =========================
+# SIDEBAR
+# =========================
+
+st.sidebar.header("📊 Navigation")
+
+option = st.sidebar.radio(
+    "Select Analysis",
+    [
+        "Dashboard",
+        "Show Data",
+        "Basic Information",
+        "Statistical Summary",
+        "Filter Data",
+        "Category Sales",
+        "Sales Trend",
+        "Correlation Heatmap",
+        "NumPy Analysis"
+    ]
+)
+
+
+# =========================
+# DASHBOARD
+# =========================
+
+if option == "Dashboard":
+
+    st.header("📊 Sales Dashboard")
+
+    total_sales, average_sales, total_quantity, popular_product = (
+        analyzer.metrics()
+    )
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        st.metric(
+            "💰 Total Sales",
+            f"{total_sales:,.2f}"
+        )
+
+    with col2:
+        st.metric(
+            "📈 Average Sales",
+            f"{average_sales:,.2f}"
+        )
+
+    with col3:
+        st.metric(
+            "📦 Total Quantity",
+            f"{total_quantity:,.0f}"
+        )
+
+    with col4:
+        st.metric(
+            "🏆 Popular Product",
+            popular_product
+        )
+
+    st.divider()
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+
+        st.subheader("Category Wise Sales")
+
+        category_sales = (
+            analyzer.df
+            .groupby("Category")["Total Sales"]
+            .sum()
+        )
+
+        st.bar_chart(category_sales)
+
+    with col2:
+
+        st.subheader("Sales Trend")
+
+        daily_sales = (
+            analyzer.df
+            .groupby("Date")["Total Sales"]
+            .sum()
+        )
+
+        st.line_chart(daily_sales)
+
+
+# =========================
+# SHOW DATA
+# =========================
+
+elif option == "Show Data":
+
+    st.header("📋 Retail Sales Data")
+
+    st.dataframe(
+        analyzer.df,
+        use_container_width=True
+    )
+
+
+# =========================
+# BASIC INFORMATION
+# =========================
+
+elif option == "Basic Information":
+
+    st.header("ℹ️ Basic Information")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.metric(
+            "Rows",
+            analyzer.df.shape[0]
+        )
+
+    with col2:
+        st.metric(
+            "Columns",
+            analyzer.df.shape[1]
+        )
+
+    st.subheader("Column Names")
+
+    for column in analyzer.df.columns:
+        st.write("•", column)
+
+    st.subheader("Data Types")
+
+    st.dataframe(
+        analyzer.df.dtypes.astype(str),
+        use_container_width=True
+    )
+
+
+# =========================
+# STATISTICAL SUMMARY
+# =========================
+
+elif option == "Statistical Summary":
+
+    st.header("📈 Statistical Summary")
+
+    st.dataframe(
+        analyzer.df.describe(),
+        use_container_width=True
+    )
+
+    st.subheader("Category Wise Sales")
+
+    category_sales = (
+        analyzer.df
+        .groupby("Category")["Total Sales"]
+        .sum()
+        .reset_index()
+    )
+
+    st.dataframe(
+        category_sales,
+        use_container_width=True
+    )
+
+
+# =========================
+# FILTER DATA
+# =========================
+
+elif option == "Filter Data":
+
+    st.header("🔎 Filter Sales Data")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+
+        categories = [
+            "All"
+        ] + sorted(
+            analyzer.df["Category"]
+            .astype(str)
+            .unique()
+            .tolist()
+        )
+
+        selected_category = st.selectbox(
+            "Select Category",
+            categories
+        )
+
+    with col2:
+
+        min_date = analyzer.df["Date"].min().date()
+        max_date = analyzer.df["Date"].max().date()
+
+        date_range = st.date_input(
+            "Select Date Range",
+            value=(min_date, max_date),
+            min_value=min_date,
+            max_value=max_date
+        )
+
+    filtered_df = analyzer.df.copy()
+
+    if selected_category != "All":
+
+        filtered_df = filtered_df[
+            filtered_df["Category"] == selected_category
+        ]
+
+    if len(date_range) == 2:
+
+        start_date = pd.to_datetime(
+            date_range[0]
+        )
+
+        end_date = pd.to_datetime(
+            date_range[1]
+        )
+
+        filtered_df = filtered_df[
+            (filtered_df["Date"] >= start_date)
+            &
+            (filtered_df["Date"] <= end_date)
+        ]
+
+    st.write(
+        "Filtered Records:",
+        len(filtered_df)
+    )
+
+    st.dataframe(
+        filtered_df,
+        use_container_width=True
+    )
+
+
+# =========================
+# CATEGORY SALES
+# =========================
+
+elif option == "Category Sales":
+
+    st.header("📊 Category Wise Sales")
+
+    data = (
+        analyzer.df
+        .groupby("Category")["Total Sales"]
+        .sum()
+        .sort_values(ascending=False)
+    )
+
+    st.bar_chart(data)
+
+    st.subheader("Category Sales Table")
+
+    st.dataframe(
+        data.reset_index(),
+        use_container_width=True
+    )
+
+
+# =========================
+# SALES TREND
+# =========================
+
+elif option == "Sales Trend":
+
+    st.header("📈 Sales Trend Over Time")
+
+    data = (
+        analyzer.df
+        .groupby("Date")["Total Sales"]
+        .sum()
+    )
+
+    fig, ax = plt.subplots(figsize=(12, 5))
+
+    ax.plot(
+        data.index,
+        data.values,
+        marker="o"
+    )
+
+    ax.set_title(
+        "Sales Trend Over Time"
+    )
+
+    ax.set_xlabel("Date")
+    ax.set_ylabel("Total Sales")
+
+    plt.xticks(rotation=45)
+
+    plt.tight_layout()
+
+    st.pyplot(fig)
+
+
+# =========================
+# HEATMAP
+# =========================
+
+elif option == "Correlation Heatmap":
+
+    st.header("🔥 Sales Data Correlation")
+
+    data = analyzer.df[
+        [
+            "Price",
+            "Quantity Sold",
+            "Total Sales"
+        ]
+    ]
+
+    correlation = data.corr()
+
+    fig, ax = plt.subplots(
+        figsize=(8, 5)
+    )
+
+    sns.heatmap(
+        correlation,
+        annot=True,
+        cmap="coolwarm",
+        ax=ax
+    )
+
+    ax.set_title(
+        "Sales Data Correlation"
+    )
+
+    st.pyplot(fig)
+
+
+# =========================
+# NUMPY ANALYSIS
+# =========================
+
+elif option == "NumPy Analysis":
+
+    st.header("🔢 NumPy Analysis")
+
+    sales = np.array(
+        analyzer.df["Total Sales"]
+    )
+
+    total_sales = np.sum(sales)
+    average_sales = np.mean(sales)
+    highest_sale = np.max(sales)
+    lowest_sale = np.min(sales)
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+
+        st.metric(
+            "Total Sales",
+            f"{total_sales:,.2f}"
+        )
+
+        st.metric(
+            "Average Sales",
+            f"{average_sales:,.2f}"
+        )
+
+    with col2:
+
+        st.metric(
+            "Highest Sale",
+            f"{highest_sale:,.2f}"
+        )
+
+        st.metric(
+            "Lowest Sale",
+            f"{lowest_sale:,.2f}"
+        )
+
+    st.subheader("Growth Percentage")
+
+    if len(sales) > 1:
+
+        if sales[0] == 0:
+
+            st.warning(
+                "Growth cannot be calculated because "
+                "the first sale value is 0."
+            )
+
+        else:
+
+            growth = (
+                (sales[-1] - sales[0])
+                / sales[0]
+            ) * 100
+
+            st.metric(
+                "Sales Growth",
+                f"{growth:.2f}%"
+            )
+
+    st.subheader("NumPy Sales Array")
+
+    st.write(sales)
