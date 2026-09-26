@@ -1,3 +1,4 @@
+import os
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -31,12 +32,20 @@ st.markdown(
 
 
 @st.cache_data
-def load_data(file_path_or_buffer):
-  df = pd.read_csv(file_path_or_buffer)
+def load_data():
+  filename = "retail_sales_dataset.csv"
+  if not os.path.exists(filename):
+    st.error(
+        f"File '{filename}' not found in the repository root. Please ensure it"
+        " is committed to GitHub."
+    )
+    st.stop()
+
+  df = pd.read_csv(filename)
   # Clean column headers
   df.columns = df.columns.str.strip()
 
-  # Handle variations in column names if any
+  # Standardize column names if needed
   rename_map = {
       "Product Category": "Product",
       "Quantity Sold": "Quantity",
@@ -52,6 +61,9 @@ def load_data(file_path_or_buffer):
   return df
 
 
+# Load data automatically
+df = load_data()
+
 # App Header
 st.title("🛒 Retail Sales Data Analyzer")
 st.markdown(
@@ -60,43 +72,8 @@ st.markdown(
 )
 st.write("---")
 
-# Sidebar Configuration
-st.sidebar.header("📁 Data Source & Filters")
-uploaded_file = st.sidebar.file_uploader("Upload CSV File", type=["csv"])
-
-# Load file: either from uploader or fallback to default local file
-try:
-  if uploaded_file is not None:
-    df = load_data(uploaded_file)
-  else:
-    df = load_data("retail_sales_dataset.csv")
-except Exception as e:
-  st.error(
-      f"Could not load data file. Please ensure 'retail_sales_dataset.csv' is"
-      f" present or upload a file. Error: {e}"
-  )
-  st.stop()
-
-# Ensure mandatory columns exist
-required_columns = [
-    "Transaction ID",
-    "Date",
-    "Customer ID",
-    "Gender",
-    "Age",
-    "Product",
-    "Quantity",
-    "Price per Unit",
-    "Total Amount",
-]
-
-missing_cols = [col for col in required_columns if col not in df.columns]
-if missing_cols:
-  st.error(f"Missing required columns in dataset: {', '.join(missing_cols)}")
-  st.stop()
-
 # Sidebar Filters
-st.sidebar.subheader("Filter Dataset")
+st.sidebar.header("🔍 Filters")
 
 # Product Filter
 products = sorted(df["Product"].dropna().unique().tolist())
@@ -139,9 +116,15 @@ if date_range and len(date_range) == 2:
   ]
 
 # Top KPI Metric Cards
-total_revenue = filtered_df["Total Amount"].sum()
-total_transactions = filtered_df["Transaction ID"].nunique()
-total_units_sold = filtered_df["Quantity"].sum()
+total_revenue = (
+    filtered_df["Total Amount"].sum() if not filtered_df.empty else 0
+)
+total_transactions = (
+    filtered_df["Transaction ID"].nunique() if not filtered_df.empty else 0
+)
+total_units_sold = (
+    filtered_df["Quantity"].sum() if not filtered_df.empty else 0
+)
 avg_order_value = (
     filtered_df["Total Amount"].mean() if not filtered_df.empty else 0
 )
@@ -159,10 +142,12 @@ chart_col1, chart_col2 = st.columns(2)
 
 with chart_col1:
   st.subheader("📈 Monthly Sales Trend")
-  if not filtered_df.empty:
+  if not filtered_df.empty and filtered_df["Date"].notnull().any():
+    # 'ME' is used instead of deprecated 'M'
     trend_df = (
-        filtered_df.set_index("Date")
-        .resample("M")["Total Amount"]
+        filtered_df.dropna(subset=["Date"])
+        .set_index("Date")
+        .resample("ME")["Total Amount"]
         .sum()
         .reset_index()
     )
