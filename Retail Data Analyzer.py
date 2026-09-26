@@ -1,559 +1,253 @@
-import streamlit as st
-import pandas as pd
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 import seaborn as sns
-import os
+import streamlit as st
 
+# Configure page settings
 st.set_page_config(
-    page_title="Retail Sales Analyzer",
+    page_title="Retail Sales Data Analyzer",
     page_icon="🛒",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
+# Custom Styling for modern UI cards
+st.markdown(
+    """
+    <style>
+    .main {
+        background-color: #f8f9fa;
+    }
+    div[data-testid="stMetricValue"] {
+        font-size: 26px;
+        font-weight: 700;
+        color: #1e3a8a;
+    }
+    </style>
+""",
+    unsafe_allow_html=True,
 )
 
 
-class RetailAnalyzer:
+@st.cache_data
+def load_data(file_path_or_buffer):
+  df = pd.read_csv(file_path_or_buffer)
+  # Clean column headers
+  df.columns = df.columns.str.strip()
 
-    def __init__(self):
-        self.df = None
+  # Handle variations in column names if any
+  rename_map = {
+      "Product Category": "Product",
+      "Quantity Sold": "Quantity",
+      "Price": "Price per Unit",
+      "Total Sales": "Total Amount",
+  }
+  df = df.rename(columns=rename_map)
 
-    def load_data(self, file):
-        try:
-            self.df = pd.read_csv(file)
+  # Convert Date column to datetime
+  if "Date" in df.columns:
+    df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
 
-            required_columns = [
-                "Date",
-                "Product",
-                "Category",
-                "Price",
-                "Quantity Sold",
-                "Total Sales"
-            ]
-
-            for column in required_columns:
-                if column not in self.df.columns:
-                    return False, f"Missing column: {column}"
-
-            self.df["Date"] = pd.to_datetime(
-                self.df["Date"],
-                errors="coerce"
-            )
-
-            self.df["Price"] = pd.to_numeric(
-                self.df["Price"],
-                errors="coerce"
-            )
-
-            self.df["Quantity Sold"] = pd.to_numeric(
-                self.df["Quantity Sold"],
-                errors="coerce"
-            )
-
-            self.df["Total Sales"] = pd.to_numeric(
-                self.df["Total Sales"],
-                errors="coerce"
-            )
-
-            key_columns = [
-                "Date",
-                "Price",
-                "Quantity Sold",
-                "Total Sales"
-            ]
-
-            self.df = self.df.dropna(
-                subset=key_columns
-            )
-
-            self.df = self.df.sort_values(
-                "Date"
-            ).reset_index(drop=True)
-
-            if len(self.df) == 0:
-                return False, "No valid data found."
-
-            return True, "Dataset loaded successfully!"
-
-        except Exception as e:
-            return False, str(e)
-
-    def metrics(self):
-        total_sales = self.df["Total Sales"].sum()
-        average_sales = self.df["Total Sales"].mean()
-        total_quantity = self.df["Quantity Sold"].sum()
-
-        popular_product = (
-            self.df.groupby("Product")["Quantity Sold"]
-            .sum()
-            .idxmax()
-        )
-
-        return (
-            total_sales,
-            average_sales,
-            total_quantity,
-            popular_product
-        )
+  return df
 
 
-# =========================
-# HEADER
-# =========================
-
+# App Header
 st.title("🛒 Retail Sales Data Analyzer")
-st.write(
-    "Analyze retail sales data using Pandas, NumPy, "
-    "Matplotlib, Seaborn and Streamlit."
+st.markdown(
+    "Analyze retail sales trends, customer demographics, and product"
+    " performance."
+)
+st.write("---")
+
+# Sidebar Configuration
+st.sidebar.header("📁 Data Source & Filters")
+uploaded_file = st.sidebar.file_uploader("Upload CSV File", type=["csv"])
+
+# Load file: either from uploader or fallback to default local file
+try:
+  if uploaded_file is not None:
+    df = load_data(uploaded_file)
+  else:
+    df = load_data("retail_sales_dataset.csv")
+except Exception as e:
+  st.error(
+      f"Could not load data file. Please ensure 'retail_sales_dataset.csv' is"
+      f" present or upload a file. Error: {e}"
+  )
+  st.stop()
+
+# Ensure mandatory columns exist
+required_columns = [
+    "Transaction ID",
+    "Date",
+    "Customer ID",
+    "Gender",
+    "Age",
+    "Product",
+    "Quantity",
+    "Price per Unit",
+    "Total Amount",
+]
+
+missing_cols = [col for col in required_columns if col not in df.columns]
+if missing_cols:
+  st.error(f"Missing required columns in dataset: {', '.join(missing_cols)}")
+  st.stop()
+
+# Sidebar Filters
+st.sidebar.subheader("Filter Dataset")
+
+# Product Filter
+products = sorted(df["Product"].dropna().unique().tolist())
+selected_products = st.sidebar.multiselect(
+    "Select Products", options=products, default=products
 )
 
-st.divider()
-
-
-# =========================
-# LOAD DATA
-# =========================
-
-analyzer = RetailAnalyzer()
-
-uploaded_file = st.sidebar.file_uploader(
-    "Upload Retail CSV File",
-    type=["csv"]
+# Gender Filter
+genders = sorted(df["Gender"].dropna().unique().tolist())
+selected_genders = st.sidebar.multiselect(
+    "Select Gender", options=genders, default=genders
 )
 
-if uploaded_file is not None:
+# Date Filter
+min_date = df["Date"].min()
+max_date = df["Date"].max()
 
-    success, message = analyzer.load_data(
-        uploaded_file
-    )
-
-elif os.path.exists("retail_sales_dataset.csv"):
-
-    success, message = analyzer.load_data(
-        "retail_sales_dataset.csv"
-    )
-
+if pd.notnull(min_date) and pd.notnull(max_date):
+  date_range = st.sidebar.date_input(
+      "Select Date Range",
+      value=(min_date.date(), max_date.date()),
+      min_value=min_date.date(),
+      max_value=max_date.date(),
+  )
 else:
-    success = False
-    message = "Please upload a CSV file."
+  date_range = None
 
+# Apply Filters
+filtered_df = df[
+    (df["Product"].isin(selected_products))
+    & (df["Gender"].isin(selected_genders))
+]
 
-if not success:
+if date_range and len(date_range) == 2:
+  start_date, end_date = pd.to_datetime(date_range[0]), pd.to_datetime(
+      date_range[1]
+  )
+  filtered_df = filtered_df[
+      (filtered_df["Date"] >= start_date) & (filtered_df["Date"] <= end_date)
+  ]
 
-    st.warning(message)
-
-    st.info(
-        "CSV file must contain: Date, Product, "
-        "Category, Price, Quantity Sold, Total Sales"
-    )
-
-    st.stop()
-
-
-st.sidebar.success("Dataset Loaded")
-
-
-# =========================
-# SIDEBAR
-# =========================
-
-st.sidebar.header("📊 Navigation")
-
-option = st.sidebar.radio(
-    "Select Analysis",
-    [
-        "Dashboard",
-        "Show Data",
-        "Basic Information",
-        "Statistical Summary",
-        "Filter Data",
-        "Category Sales",
-        "Sales Trend",
-        "Correlation Heatmap",
-        "NumPy Analysis"
-    ]
+# Top KPI Metric Cards
+total_revenue = filtered_df["Total Amount"].sum()
+total_transactions = filtered_df["Transaction ID"].nunique()
+total_units_sold = filtered_df["Quantity"].sum()
+avg_order_value = (
+    filtered_df["Total Amount"].mean() if not filtered_df.empty else 0
 )
 
+col1, col2, col3, col4 = st.columns(4)
+col1.metric("Total Revenue", f"${total_revenue:,.2f}")
+col2.metric("Total Transactions", f"{total_transactions:,}")
+col3.metric("Units Sold", f"{total_units_sold:,}")
+col4.metric("Avg Order Value", f"${avg_order_value:,.2f}")
 
-# =========================
-# DASHBOARD
-# =========================
+st.write("---")
 
-if option == "Dashboard":
+# Visualizations Row 1: Sales Trends & Product Performance
+chart_col1, chart_col2 = st.columns(2)
 
-    st.header("📊 Sales Dashboard")
-
-    total_sales, average_sales, total_quantity, popular_product = (
-        analyzer.metrics()
-    )
-
-    col1, col2, col3, col4 = st.columns(4)
-
-    with col1:
-        st.metric(
-            "💰 Total Sales",
-            f"{total_sales:,.2f}"
-        )
-
-    with col2:
-        st.metric(
-            "📈 Average Sales",
-            f"{average_sales:,.2f}"
-        )
-
-    with col3:
-        st.metric(
-            "📦 Total Quantity",
-            f"{total_quantity:,.0f}"
-        )
-
-    with col4:
-        st.metric(
-            "🏆 Popular Product",
-            popular_product
-        )
-
-    st.divider()
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-
-        st.subheader("Category Wise Sales")
-
-        category_sales = (
-            analyzer.df
-            .groupby("Category")["Total Sales"]
-            .sum()
-        )
-
-        st.bar_chart(category_sales)
-
-    with col2:
-
-        st.subheader("Sales Trend")
-
-        daily_sales = (
-            analyzer.df
-            .groupby("Date")["Total Sales"]
-            .sum()
-        )
-
-        st.line_chart(daily_sales)
-
-
-# =========================
-# SHOW DATA
-# =========================
-
-elif option == "Show Data":
-
-    st.header("📋 Retail Sales Data")
-
-    st.dataframe(
-        analyzer.df,
-        use_container_width=True
-    )
-
-
-# =========================
-# BASIC INFORMATION
-# =========================
-
-elif option == "Basic Information":
-
-    st.header("ℹ️ Basic Information")
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        st.metric(
-            "Rows",
-            analyzer.df.shape[0]
-        )
-
-    with col2:
-        st.metric(
-            "Columns",
-            analyzer.df.shape[1]
-        )
-
-    st.subheader("Column Names")
-
-    for column in analyzer.df.columns:
-        st.write("•", column)
-
-    st.subheader("Data Types")
-
-    st.dataframe(
-        analyzer.df.dtypes.astype(str),
-        use_container_width=True
-    )
-
-
-# =========================
-# STATISTICAL SUMMARY
-# =========================
-
-elif option == "Statistical Summary":
-
-    st.header("📈 Statistical Summary")
-
-    st.dataframe(
-        analyzer.df.describe(),
-        use_container_width=True
-    )
-
-    st.subheader("Category Wise Sales")
-
-    category_sales = (
-        analyzer.df
-        .groupby("Category")["Total Sales"]
+with chart_col1:
+  st.subheader("📈 Monthly Sales Trend")
+  if not filtered_df.empty:
+    trend_df = (
+        filtered_df.set_index("Date")
+        .resample("M")["Total Amount"]
         .sum()
         .reset_index()
     )
+    trend_df["Month"] = trend_df["Date"].dt.strftime("%b %Y")
 
-    st.dataframe(
-        category_sales,
-        use_container_width=True
+    fig, ax = plt.subplots(figsize=(8, 4))
+    sns.lineplot(
+        data=trend_df,
+        x="Month",
+        y="Total Amount",
+        marker="o",
+        color="#2563eb",
+        ax=ax,
     )
+    plt.xticks(rotation=45)
+    plt.ylabel("Revenue ($)")
+    plt.xlabel("")
+    plt.grid(True, linestyle="--", alpha=0.5)
+    st.pyplot(fig)
+  else:
+    st.info("No data available for the selected filters.")
 
-
-# =========================
-# FILTER DATA
-# =========================
-
-elif option == "Filter Data":
-
-    st.header("🔎 Filter Sales Data")
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-
-        categories = [
-            "All"
-        ] + sorted(
-            analyzer.df["Category"]
-            .astype(str)
-            .unique()
-            .tolist()
-        )
-
-        selected_category = st.selectbox(
-            "Select Category",
-            categories
-        )
-
-    with col2:
-
-        min_date = analyzer.df["Date"].min().date()
-        max_date = analyzer.df["Date"].max().date()
-
-        date_range = st.date_input(
-            "Select Date Range",
-            value=(min_date, max_date),
-            min_value=min_date,
-            max_value=max_date
-        )
-
-    filtered_df = analyzer.df.copy()
-
-    if selected_category != "All":
-
-        filtered_df = filtered_df[
-            filtered_df["Category"] == selected_category
-        ]
-
-    if len(date_range) == 2:
-
-        start_date = pd.to_datetime(
-            date_range[0]
-        )
-
-        end_date = pd.to_datetime(
-            date_range[1]
-        )
-
-        filtered_df = filtered_df[
-            (filtered_df["Date"] >= start_date)
-            &
-            (filtered_df["Date"] <= end_date)
-        ]
-
-    st.write(
-        "Filtered Records:",
-        len(filtered_df)
-    )
-
-    st.dataframe(
-        filtered_df,
-        use_container_width=True
-    )
-
-
-# =========================
-# CATEGORY SALES
-# =========================
-
-elif option == "Category Sales":
-
-    st.header("📊 Category Wise Sales")
-
-    data = (
-        analyzer.df
-        .groupby("Category")["Total Sales"]
+with chart_col2:
+  st.subheader("🏷️ Revenue by Product")
+  if not filtered_df.empty:
+    prod_sales = (
+        filtered_df.groupby("Product")["Total Amount"]
         .sum()
         .sort_values(ascending=False)
+        .reset_index()
     )
 
-    st.bar_chart(data)
-
-    st.subheader("Category Sales Table")
-
-    st.dataframe(
-        data.reset_index(),
-        use_container_width=True
+    fig, ax = plt.subplots(figsize=(8, 4))
+    sns.barplot(
+        data=prod_sales,
+        x="Total Amount",
+        y="Product",
+        palette="Blues_r",
+        ax=ax,
     )
-
-
-# =========================
-# SALES TREND
-# =========================
-
-elif option == "Sales Trend":
-
-    st.header("📈 Sales Trend Over Time")
-
-    data = (
-        analyzer.df
-        .groupby("Date")["Total Sales"]
-        .sum()
-    )
-
-    fig, ax = plt.subplots(figsize=(12, 5))
-
-    ax.plot(
-        data.index,
-        data.values,
-        marker="o"
-    )
-
-    ax.set_title(
-        "Sales Trend Over Time"
-    )
-
-    ax.set_xlabel("Date")
-    ax.set_ylabel("Total Sales")
-
-    plt.xticks(rotation=45)
-
-    plt.tight_layout()
-
+    plt.xlabel("Revenue ($)")
+    plt.ylabel("")
     st.pyplot(fig)
+  else:
+    st.info("No data available for the selected filters.")
 
+# Visualizations Row 2: Customer Demographics
+st.write("---")
+demo_col1, demo_col2 = st.columns(2)
 
-# =========================
-# HEATMAP
-# =========================
+with demo_col1:
+  st.subheader("👥 Sales by Gender")
+  if not filtered_df.empty:
+    gender_sales = filtered_df.groupby("Gender")["Total Amount"].sum()
 
-elif option == "Correlation Heatmap":
-
-    st.header("🔥 Sales Data Correlation")
-
-    data = analyzer.df[
-        [
-            "Price",
-            "Quantity Sold",
-            "Total Sales"
-        ]
-    ]
-
-    correlation = data.corr()
-
-    fig, ax = plt.subplots(
-        figsize=(8, 5)
+    fig, ax = plt.subplots(figsize=(6, 4))
+    ax.pie(
+        gender_sales,
+        labels=gender_sales.index,
+        autopct="%1.1f%%",
+        startangle=90,
+        colors=["#3b82f6", "#ec4899", "#10b981"],
     )
-
-    sns.heatmap(
-        correlation,
-        annot=True,
-        cmap="coolwarm",
-        ax=ax
-    )
-
-    ax.set_title(
-        "Sales Data Correlation"
-    )
-
     st.pyplot(fig)
+  else:
+    st.info("No data available for the selected filters.")
 
-
-# =========================
-# NUMPY ANALYSIS
-# =========================
-
-elif option == "NumPy Analysis":
-
-    st.header("🔢 NumPy Analysis")
-
-    sales = np.array(
-        analyzer.df["Total Sales"]
+with demo_col2:
+  st.subheader("🎂 Age Distribution")
+  if not filtered_df.empty:
+    fig, ax = plt.subplots(figsize=(8, 4))
+    sns.histplot(
+        filtered_df["Age"],
+        bins=15,
+        kde=True,
+        color="#4f46e5",
+        ax=ax,
     )
+    plt.xlabel("Customer Age")
+    plt.ylabel("Frequency")
+    st.pyplot(fig)
+  else:
+    st.info("No data available for the selected filters.")
 
-    total_sales = np.sum(sales)
-    average_sales = np.mean(sales)
-    highest_sale = np.max(sales)
-    lowest_sale = np.min(sales)
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-
-        st.metric(
-            "Total Sales",
-            f"{total_sales:,.2f}"
-        )
-
-        st.metric(
-            "Average Sales",
-            f"{average_sales:,.2f}"
-        )
-
-    with col2:
-
-        st.metric(
-            "Highest Sale",
-            f"{highest_sale:,.2f}"
-        )
-
-        st.metric(
-            "Lowest Sale",
-            f"{lowest_sale:,.2f}"
-        )
-
-    st.subheader("Growth Percentage")
-
-    if len(sales) > 1:
-
-        if sales[0] == 0:
-
-            st.warning(
-                "Growth cannot be calculated because "
-                "the first sale value is 0."
-            )
-
-        else:
-
-            growth = (
-                (sales[-1] - sales[0])
-                / sales[0]
-            ) * 100
-
-            st.metric(
-                "Sales Growth",
-                f"{growth:.2f}%"
-            )
-
-    st.subheader("NumPy Sales Array")
-
-    st.write(sales)
+# Detailed Data Table
+st.write("---")
+st.subheader("📋 Dataset Preview")
+st.dataframe(filtered_df, use_container_width=True)
